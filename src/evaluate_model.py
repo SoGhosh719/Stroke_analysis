@@ -1,5 +1,3 @@
-# evaluate_model.py
-
 import os
 import sys
 from pyspark.sql import SparkSession
@@ -18,6 +16,8 @@ df = spark.read.csv("data/healthcare-dataset-stroke-data.csv", header=True, infe
 
 # Apply same preprocessing as training
 df = handle_missing_values(df)
+df = df.withColumn("bmi", df["bmi"].cast("double"))  # Ensure bmi is numeric
+df = df.na.fill({"bmi": 28.9})  # Fill missing BMI values with mean or default
 
 # Load the trained model pipeline
 model = PipelineModel.load("models/stroke_gbt_model")

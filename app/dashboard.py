@@ -1,23 +1,26 @@
-# dashboard.py
-
 import streamlit as st
 from pyspark.sql import SparkSession, Row
 from pyspark.ml import PipelineModel
 
-# Initialize Spark session
-spark = SparkSession.builder.appName("StrokeDashboard").getOrCreate()
+# --- Cached Spark + Model Load ---
+@st.cache_resource
+def load_spark():
+    return SparkSession.builder.appName("StrokeDashboard").getOrCreate()
 
-# Load trained pipeline model
-model = PipelineModel.load("models/stroke_gbt_model")
+@st.cache_resource
+def load_model():
+    return PipelineModel.load("models/stroke_gbt_model")
 
-# Set page title
+spark = load_spark()
+model = load_model()
+
+# --- Streamlit UI ---
 st.set_page_config(page_title="Stroke Risk Predictor", layout="centered")
 st.title("🧠 Stroke Risk Predictor")
 st.caption("Use the sidebar to enter patient details and predict stroke risk.")
 
-# Sidebar inputs
+# --- Sidebar Inputs ---
 st.sidebar.header("Patient Info")
-
 gender = st.sidebar.selectbox("Gender", ["Male", "Female", "Other"])
 age = st.sidebar.slider("Age", 0, 100, 50)
 hypertension = st.sidebar.selectbox("Hypertension", [0, 1])
@@ -29,10 +32,9 @@ avg_glucose_level = st.sidebar.slider("Average Glucose Level", 50.0, 300.0, 100.
 bmi = st.sidebar.slider("BMI", 10.0, 60.0, 28.0)
 smoking_status = st.sidebar.selectbox("Smoking Status", ["formerly smoked", "never smoked", "smokes", "Unknown"])
 
-# Prediction trigger
+# --- Prediction ---
 if st.sidebar.button("Predict Stroke Risk"):
-    # Create a Spark DataFrame from form inputs
-    data = {
+    input_data = {
         "gender": gender,
         "age": age,
         "hypertension": hypertension,
@@ -45,10 +47,10 @@ if st.sidebar.button("Predict Stroke Risk"):
         "smoking_status": smoking_status
     }
 
-    row = Row(**data)
+    row = Row(**input_data)
     df = spark.createDataFrame([row])
 
-    # Default fill values if any field is missing
+    # Handle missing fields just in case
     df = df.fillna({
         "bmi": 28.9,
         "smoking_status": "Unknown",
@@ -58,24 +60,23 @@ if st.sidebar.button("Predict Stroke Risk"):
         "Residence_type": "Urban"
     })
 
-    # Run prediction
+    # Predict
     result = model.transform(df)
     pred = result.select("prediction", "probability").first()
 
-    stroke_prob = pred["probability"][1]
+    stroke_prob = round(pred["probability"][1], 2)
     stroke_prediction = int(pred["prediction"])
 
-    # Display results
+    # --- Display Results ---
     st.markdown("---")
     st.subheader("🩺 Prediction Results")
-
     if stroke_prediction == 1:
-        st.error(f"⚠️ High risk of stroke detected! Probability: **{stroke_prob:.2f}**")
+        st.error(f"⚠️ High risk of stroke detected!\n\n**Probability: {stroke_prob:.2f}**")
     else:
-        st.success(f"✅ Low risk of stroke. Probability: **{stroke_prob:.2f}**")
+        st.success(f"✅ Low risk of stroke.\n\n**Probability: {stroke_prob:.2f}**")
 
-    st.progress(min(stroke_prob, 1.0))
+    st.progress(stroke_prob)
 
-# Footer
+# --- Footer ---
 st.markdown("---")
-st.caption("Developed using PySpark + Streamlit")
+st.caption("🔧 Developed using PySpark + Streamlit")

@@ -1,5 +1,3 @@
-# train_model.py
-
 import os
 import sys
 from pyspark.sql import SparkSession
@@ -18,6 +16,13 @@ df = spark.read.csv("data/healthcare-dataset-stroke-data.csv", header=True, infe
 
 # Apply preprocessing
 df = handle_missing_values(df)
+df = df.withColumn("bmi", df["bmi"].cast("double"))  # Ensure 'bmi' is numeric
+
+# Drop rows with nulls in relevant input features
+df = df.dropna(subset=[
+    "age", "hypertension", "heart_disease", "avg_glucose_level", "bmi",
+    "gender", "ever_married", "work_type", "Residence_type", "smoking_status", "stroke"
+])
 
 # Define columns
 categorical_cols = ["gender", "ever_married", "work_type", "Residence_type", "smoking_status"]
@@ -30,13 +35,11 @@ stages = get_feature_pipeline(categorical_cols, numeric_cols)
 classifier = GBTClassifier(labelCol="label", featuresCol="scaled_features", maxIter=20)
 stages.append(classifier)
 
-# Build full pipeline
+# Build and train pipeline
 pipeline = Pipeline(stages=stages)
-
-# Train model
 model = pipeline.fit(df)
 
-# Save model
+# Save trained model
 os.makedirs("models", exist_ok=True)
 model.write().overwrite().save("models/stroke_gbt_model")
 
