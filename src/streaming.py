@@ -1,17 +1,11 @@
 # streaming.py
 
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col, mean, when
+from pyspark.sql.types import *
 from pyspark.ml import PipelineModel
-import time
+from utils.preprocessing import handle_missing_values
 
-# Initialize Spark session with streaming support
-spark = SparkSession.builder \
-    .appName("StrokeStreamingInference") \
-    .getOrCreate()
-
-# Define schema for input data (matches original dataset)
-from pyspark.sql.types import StructType, StructField, IntegerType, DoubleType, StringType
+spark = SparkSession.builder.appName("StrokeStreaming").getOrCreate()
 
 schema = StructType([
     StructField("id", IntegerType(), True),
@@ -25,40 +19,16 @@ schema = StructType([
     StructField("avg_glucose_level", DoubleType(), True),
     StructField("bmi", DoubleType(), True),
     StructField("smoking_status", StringType(), True),
-    StructField("stroke", IntegerType(), True)  # Optional for inference
+    StructField("stroke", IntegerType(), True)
 ])
 
-# Load the trained pipeline model
+df_stream = spark.readStream.schema(schema).option("maxFilesPerTrigger", 1).csv("stream_input/")
+df_stream = handle_missing_values(df_stream)
+
 model = PipelineModel.load("models/stroke_gbt_model")
+predictions = model.transform(df_stream)
 
-# Monitor a directory for new data (simulate streaming)
-input_path = "stream_input/"
+output = predictions.select("id", "age", "avg_glucose_level", "bmi", "prediction", "probability")
 
-# Read the streaming data
-streaming_df = spark.readStream \
-    .schema(schema) \
-    .option("maxFilesPerTrigger", 1) \
-    .csv(input_path)
-
-# Fill missing bmi values and categories
-mean_bmi = 28.893236911794673  # use same as training
-streaming_df = streaming_df.withColumn("bmi", when(col("bmi").isNull(), mean_bmi).otherwise(col("bmi")))
-
-categorical_cols = ["gender", "ever_married", "work_type", "Residence_type", "smoking_status"]
-for colname in categorical_cols:
-    streaming_df = streaming_df.fillna({colname: "Unknown"})
-
-# Apply trained pipeline to streaming data
-predictions = model.transform(streaming_df)
-
-# Select and display relevant outputs
-results = predictions.select("id", "age", "avg_glucose_level", "bmi", "prediction", "probability")
-
-query = results.writeStream \
-    .outputMode("append") \
-    .format("console") \
-    .option("truncate", False) \
-    .start()
-
+query = output.writeStream.outputMode("append").format("console").option("truncate", False).start()
 query.awaitTermination()
-
