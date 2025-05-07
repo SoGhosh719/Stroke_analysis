@@ -1,4 +1,3 @@
-# eda.py
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col, mean, when, count
 import matplotlib.pyplot as plt
@@ -22,9 +21,12 @@ df.select([count(when(col(c).isNull(), c)).alias(c) for c in df.columns]).show()
 # Fill nulls in BMI with mean
 mean_bmi = df.select(mean("bmi")).first()[0]
 df = df.withColumn("bmi", when(col("bmi").isNull(), mean_bmi).otherwise(col("bmi")))
+df = df.withColumn("bmi", df["bmi"].cast("double"))  # Ensure bmi is numeric
 
 # Convert to pandas for visualizations
 pdf = df.toPandas()
+pdf["bmi"] = pd.to_numeric(pdf["bmi"], errors="coerce")
+pdf = pdf.dropna(subset=["bmi", "age", "avg_glucose_level", "stroke"])  # Drop rows with non-numeric data
 
 # Create output folder
 os.makedirs("outputs", exist_ok=True)
@@ -80,7 +82,6 @@ for colname in categorical_cols:
 
 # ----------------- COMBINED SUBPLOTS -----------------
 
-# KDE, Boxplot, Scatter for all numeric columns
 numeric_columns = ["age", "avg_glucose_level", "bmi"]
 fig, axes = plt.subplots(len(numeric_columns), 3, figsize=(15, 12))
 plt.subplots_adjust(hspace=0.4)

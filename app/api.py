@@ -4,20 +4,20 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from typing import Literal
 from pyspark.sql import SparkSession
-from pyspark.ml import PipelineModel
 from pyspark.sql import Row
+from pyspark.ml import PipelineModel
 import uvicorn
 
-# Initialize Spark
+# Initialize Spark session
 spark = SparkSession.builder.appName("StrokeAPI").getOrCreate()
 
-# Load saved model
+# Load the trained model
 model = PipelineModel.load("models/stroke_gbt_model")
 
-# Define FastAPI app
+# Create FastAPI app
 app = FastAPI(title="Stroke Risk Prediction API")
 
-# Define input data schema
+# Define request schema
 class StrokeInput(BaseModel):
     gender: Literal["Male", "Female", "Other"]
     age: float
@@ -36,11 +36,11 @@ def welcome():
 
 @app.post("/predict")
 def predict_stroke(data: StrokeInput):
-    # Create single-row Spark DataFrame
+    # Convert incoming data to Spark DataFrame
     row = Row(**data.dict())
     df = spark.createDataFrame([row])
 
-    # Fill missing/categorical placeholders if needed
+    # Default imputation if needed (use same defaults as training)
     df = df.fillna({
         "bmi": 28.9,
         "smoking_status": "Unknown",
@@ -50,7 +50,7 @@ def predict_stroke(data: StrokeInput):
         "Residence_type": "Urban"
     })
 
-    # Apply model
+    # Predict using pipeline model
     result = model.transform(df)
     prediction = result.select("prediction", "probability").first()
 
@@ -60,7 +60,6 @@ def predict_stroke(data: StrokeInput):
         "probability_stroke": round(prediction["probability"][1], 3)
     }
 
-# Optional: run with uvicorn
+# Run with: uvicorn app.api:app --host 0.0.0.0 --port 8000
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-

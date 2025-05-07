@@ -1,19 +1,19 @@
 # dashboard.py
 
 import streamlit as st
-from pyspark.sql import SparkSession
+from pyspark.sql import SparkSession, Row
 from pyspark.ml import PipelineModel
-from pyspark.sql import Row
 
 # Initialize Spark session
 spark = SparkSession.builder.appName("StrokeDashboard").getOrCreate()
 
-# Load trained model
+# Load trained pipeline model
 model = PipelineModel.load("models/stroke_gbt_model")
 
-# Set Streamlit page config
+# Set page title
 st.set_page_config(page_title="Stroke Risk Predictor", layout="centered")
 st.title("🧠 Stroke Risk Predictor")
+st.caption("Use the sidebar to enter patient details and predict stroke risk.")
 
 # Sidebar inputs
 st.sidebar.header("Patient Info")
@@ -31,7 +31,7 @@ smoking_status = st.sidebar.selectbox("Smoking Status", ["formerly smoked", "nev
 
 # Prediction trigger
 if st.sidebar.button("Predict Stroke Risk"):
-    # Create Spark DataFrame from inputs
+    # Create a Spark DataFrame from form inputs
     data = {
         "gender": gender,
         "age": age,
@@ -48,7 +48,17 @@ if st.sidebar.button("Predict Stroke Risk"):
     row = Row(**data)
     df = spark.createDataFrame([row])
 
-    # Apply model
+    # Default fill values if any field is missing
+    df = df.fillna({
+        "bmi": 28.9,
+        "smoking_status": "Unknown",
+        "gender": "Other",
+        "ever_married": "No",
+        "work_type": "Private",
+        "Residence_type": "Urban"
+    })
+
+    # Run prediction
     result = model.transform(df)
     pred = result.select("prediction", "probability").first()
 
@@ -69,4 +79,3 @@ if st.sidebar.button("Predict Stroke Risk"):
 # Footer
 st.markdown("---")
 st.caption("Developed using PySpark + Streamlit")
-
