@@ -1,1 +1,7 @@
-
+pyspark
+fastapi
+uvicorn
+streamlit
+matplotlib
+seaborn
+pandas
